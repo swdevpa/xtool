@@ -1,0 +1,11 @@
+version: 1
+bundleID: com.example.MyApp
+product: MyApp
+extensions:
+  - product: MyWatchApp
+    infoPath: WatchApp-Info.plist
+    type: watchapp
+    extensions:
+      - product: MyWatchExtension
+        infoPath: WatchExtension-Info.plist
+        type: watchextension

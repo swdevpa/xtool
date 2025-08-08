@@ -1,4 +1,5 @@
 import Foundation
+import PackageDescription
 
 public struct Packer: Sendable {
     public let buildSettings: BuildSettings
@@ -23,6 +24,7 @@ public struct Packer: Sendable {
             name: "\(plan.app.product)-Builder",
             platforms: [
                 .iOS("\(plan.app.deploymentTarget)"),
+                .watchOS("8.0"), // Mindestversion für Watch-Unterstützung
             ],
             dependencies: [
                 .package(name: "RootPackage", path: "../.."),
@@ -30,11 +32,12 @@ public struct Packer: Sendable {
             targets: [
                 \(
                     plan.allProducts.map {
+                        let platformCondition = self.platformCondition(for: $0.type)
                         """
                         .executableTarget(
                             name: "\($0.targetName)",
                             dependencies: [
-                                .product(name: "\($0.product)", package: "RootPackage"),
+                                .product(name: "\($0.product)", package: "RootPackage", condition: \(platformCondition)),
                             ],
                             linkerSettings: \($0.linkerSettings)
                         )
@@ -85,10 +88,38 @@ public struct Packer: Sendable {
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for product in plan.allProducts {
+                // Bestimme das richtige Ausgabeverzeichnis basierend auf dem Produkttyp
+                let productOutputURL: URL
+                switch product.type {
+                case .watchApp:
+                    // Watch-Apps werden im Watch-Ordner platziert
+                    productOutputURL = outputURL
+                        .appendingPathComponent("Watch", isDirectory: true)
+                        .appendingPathComponent(product.product, isDirectory: true)
+                        .appendingPathExtension("app")
+                case .watchExtension:
+                    // Finden wir das übergeordnete Watch-App-Produkt
+                    if let watchAppProduct = plan.allProducts.first(where: { $0.type == .watchApp }) {
+                        // Watch-Erweiterungen werden innerhalb der Watch-App platziert
+                        productOutputURL = outputURL
+                            .appendingPathComponent("Watch", isDirectory: true)
+                            .appendingPathComponent(watchAppProduct.product, isDirectory: true)
+                            .appendingPathExtension("app")
+                            .appendingPathComponent("PlugIns", isDirectory: true)
+                            .appendingPathComponent(product.product, isDirectory: true)
+                            .appendingPathExtension("appex")
+                    } else {
+                        // Fallback: Platzieren im Haupt-PlugIns-Ordner
+                        productOutputURL = product.directory(inApp: outputURL)
+                    }
+                default:
+                    productOutputURL = product.directory(inApp: outputURL)
+                }
+                
                 try pack(
                     product: product,
                     binDir: binDir,
-                    outputURL: product.directory(inApp: outputURL),
+                    outputURL: productOutputURL,
                     &group
                 )
             }
@@ -175,6 +206,15 @@ public struct Packer: Sendable {
                 info["UIRequiredDeviceCapabilities"] = ["arm64"]
                 info["LSRequiresIPhoneOS"] = true
                 info["CFBundleSupportedPlatforms"] = ["iPhoneOS"]
+            } else if product.type == .watchApp {
+                info["WKWatchKitApp"] = true
+                info["CFBundleSupportedPlatforms"] = ["WatchOS"]
+                // Entferne nicht benötigte Schlüssel für Watch-Apps
+                info.removeValue(forKey: "UIRequiredDeviceCapabilities")
+                info.removeValue(forKey: "LSRequiresIPhoneOS")
+            } else if product.type == .watchExtension {
+                // Spezifische Einstellungen für Watch-Erweiterungen
+                info["CFBundleSupportedPlatforms"] = ["WatchOS"]
             }
 
             if let iconPath = product.iconPath {
@@ -189,6 +229,20 @@ public struct Packer: Sendable {
                 options: 0
             )
             try encodedPlist.write(to: infoPath)
+        }
+    }
+    
+    // Hilfsmethode zur Erstellung von Plattformbedingungen
+    private func platformCondition(for type: Plan.ProductType) -> String {
+        switch type {
+        case .application:
+            ".when(platforms: [.iOS])"
+        case .appExtension:
+            ".when(platforms: [.iOS])"
+        case .watchApp:
+            ".when(platforms: [.watchOS])"
+        case .watchExtension:
+            ".when(platforms: [.watchOS])"
         }
     }
 }
@@ -213,6 +267,25 @@ extension Plan.Product {
                 // Include frameworks that the host app may use
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../../Frameworks",
                 // ...as well as our own
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
+            ]),
+        ]
+        """
+        case .watchApp: """
+        [
+            .unsafeFlags([
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
+            ]),
+        ]
+        """
+        case .watchExtension: """
+        [
+            // Link to WatchKit framework
+            .linkedFramework("WatchKit"),
+            .unsafeFlags([
+                // Set the entry point for WatchKit extensions
+                "-Xlinker", "-e", "-Xlinker", "_WKExtensionMain",
+                // Include frameworks
                 "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
             ]),
         ]

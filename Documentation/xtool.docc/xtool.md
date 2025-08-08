@@ -12,9 +12,11 @@ Cross-platform Xcode replacement.
 
 xtool is a cross-platform (Linux/WSL/macOS) tool that replicates Xcode functionality with open standards.
 
-✅ Build a SwiftPM package into an iOS app
+✅ Build a SwiftPM package into an iOS or watchOS app
 
-✅ Sign and install iOS apps
+✅ Sign and install iOS and watchOS apps
+
+✅ Create iOS apps with watchOS extensions
 
 ✅ Interact with Apple Developer Services programmatically
 
@@ -32,3 +34,4 @@ xtool is a cross-platform (Linux/WSL/macOS) tool that replicates Xcode functiona
 
 - <doc:Control>
 - <doc:Appex>
+- <doc:WatchOS>

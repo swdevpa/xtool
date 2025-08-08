@@ -1,16 +1,20 @@
 # xtool
 
-Cross-platform Xcode replacement. Build and deploy iOS apps with SwiftPM on Linux, Windows, and macOS.
+Cross-platform Xcode replacement. Build and deploy iOS and watchOS apps with SwiftPM on Linux, Windows, and macOS.
 
 ## Overview
 
 xtool is a cross-platform (Linux/WSL/macOS) tool that replicates Xcode functionality with open standards.
 
-✅ Build a SwiftPM package into an iOS app
+✅ Build a SwiftPM package into an iOS or watchOS app
 
-✅ Sign and install iOS apps
+✅ Sign and install iOS and watchOS apps
+
+✅ Create iOS apps with watchOS extensions
 
 ✅ Interact with Apple Developer Services programmatically
+
+✅ Use SwiftData for data persistence (iOS 17+/macOS 14+/watchOS 8+)
 
 ## Getting Started
 
@@ -64,4 +68,13 @@ xtool includes a library that you can use to interact with Apple Developer Servi
 .package(url: "https://github.com/xtool-org/xtool", .upToNextMinor(from: "1.2.0"))
 // target dependency:
 .product(name: "XKit", package: "xtool")
+```
+
+For SwiftData support, you can also use the `XToolData` module:
+
+```swift
+// package dependency:
+.package(url: "https://github.com/xtool-org/xtool", .upToNextMinor(from: "1.2.0"))
+// target dependency:
+.product(name: "XToolData", package: "xtool")
 ```

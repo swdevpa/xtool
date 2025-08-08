@@ -27,6 +27,14 @@ public struct PackSchemaBase: Codable, Sendable {
         public var infoPath: String
         public var resources: [String]?
         public var entitlementsPath: String?
+        public var type: ExtensionType?
+        public var extensions: [Extension]?
+    }
+    
+    public enum ExtensionType: String, Codable, Sendable {
+        case watchapp
+        case watchextension
+        case appex // Standard app extension
     }
 }
 

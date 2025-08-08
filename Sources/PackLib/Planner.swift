@@ -86,27 +86,77 @@ public struct Planner: Sendable {
             entitlementsPath: schema.entitlementsPath
         )
 
-        let extensionProducts: [Plan.Product]
+        var extensionProducts: [Plan.Product] = []
         if let extensions = schema.extensions, !extensions.isEmpty {
             extensionProducts = try await withThrowingTaskGroup(of: Plan.Product.self) { group in
                 for ext in extensions {
                     group.addTask {
-                        try await product(
+                        // Bestimme den Erweiterungstyp
+                        let productType: Plan.ProductType
+                        switch ext.type {
+                        case .watchapp:
+                            productType = .watchApp
+                        case .watchextension:
+                            productType = .watchExtension
+                        case .appex, .none:
+                            productType = .appExtension
+                        }
+                        
+                        let product = try await product(
                             from: graph,
                             matching: ext.product,
-                            type: .appExtension,
+                            type: productType,
                             plist: ext.infoPath,
                             idSpecifier: ext.bundleID.flatMap(PackSchema.IDSpecifier.bundleID) ?? .orgID(app.bundleID),
                             iconPath: nil,
                             rootResources: ext.resources,
                             entitlementsPath: ext.entitlementsPath
                         )
+                        
+                        return product
                     }
                 }
                 return try await group.reduce(into: []) { $0.append($1) }
             }
-        } else {
-            extensionProducts = []
+            
+            // Verarbeite verschachtelte Erweiterungen
+            let nestedExtensionProducts = try await withThrowingTaskGroup(of: Plan.Product.self) { group in
+                for ext in extensions {
+                    guard let nestedExtensions = ext.extensions, !nestedExtensions.isEmpty else { continue }
+                    
+                    for nestedExt in nestedExtensions {
+                        group.addTask {
+                            // Bestimme den Erweiterungstyp für verschachtelte Erweiterungen
+                            let productType: Plan.ProductType
+                            switch nestedExt.type {
+                            case .watchextension:
+                                productType = .watchExtension
+                            case .watchapp, .appex, .none:
+                                // Für verschachtelte Erweiterungen ist normalerweise watchExtension der richtige Typ
+                                productType = .watchExtension
+                            }
+                            
+                            // Erstelle eine Bundle-ID für die verschachtelte Erweiterung
+                            let parentBundleID = ext.bundleID ?? "\(app.bundleID).\(ext.product)"
+                            let nestedBundleID = "\(parentBundleID).\(nestedExt.product)"
+                            
+                            return try await product(
+                                from: graph,
+                                matching: nestedExt.product,
+                                type: productType,
+                                plist: nestedExt.infoPath,
+                                idSpecifier: .bundleID(nestedBundleID),
+                                iconPath: nil,
+                                rootResources: nestedExt.resources,
+                                entitlementsPath: nestedExt.entitlementsPath
+                            )
+                        }
+                    }
+                }
+                return try await group.reduce(into: []) { $0.append($1) }
+            }
+            
+            extensionProducts.append(contentsOf: nestedExtensionProducts)
         }
 
         return Plan(app: app, extensions: extensionProducts)
@@ -188,6 +238,18 @@ public struct Planner: Sendable {
         case .appExtension:
             // Should set default parameters?
             infoPlist["NSExtension"] = [:] as [String: Sendable]
+        case .watchApp:
+            infoPlist["UIDeviceFamily"] = [4] // Watch
+            infoPlist["WKWatchKitApp"] = true
+            // Entferne nicht benötigte Schlüssel für Watch-Apps
+            infoPlist.removeValue(forKey: "UISupportedInterfaceOrientations")
+            infoPlist.removeValue(forKey: "UISupportedInterfaceOrientations~ipad")
+            infoPlist.removeValue(forKey: "UILaunchScreen")
+        case .watchExtension:
+            infoPlist["NSExtension"] = [
+                "NSExtensionPointIdentifier": "com.apple.watchkit"
+            ] as [String: Sendable]
+            infoPlist["WKExtensionDelegateClassName"] = "ExtensionDelegate"
         }
 
         if let plist {
@@ -327,6 +389,18 @@ public struct Plan: Sendable {
                     .appendingPathComponent("PlugIns", isDirectory: true)
                     .appendingPathComponent(product, isDirectory: true)
                     .appendingPathExtension("appex")
+            case .watchApp:
+                // Watch-Apps werden im Watch-Ordner platziert
+                baseDir
+                    .appendingPathComponent("Watch", isDirectory: true)
+                    .appendingPathComponent(product, isDirectory: true)
+                    .appendingPathExtension("app")
+            case .watchExtension:
+                // Watch-Erweiterungen werden innerhalb der Watch-App platziert
+                baseDir
+                    .appendingPathComponent("PlugIns", isDirectory: true)
+                    .appendingPathComponent(product, isDirectory: true)
+                    .appendingPathExtension("appex")
             }
         }
     }
@@ -334,11 +408,15 @@ public struct Plan: Sendable {
     public enum ProductType: Sendable {
         case application
         case appExtension
+        case watchApp
+        case watchExtension
 
         fileprivate var targetSuffix: String {
             switch self {
             case .application: "App"
             case .appExtension: "Extension"
+            case .watchApp: "WatchApp"
+            case .watchExtension: "WatchExtension"
             }
         }
 
@@ -346,6 +424,8 @@ public struct Plan: Sendable {
             switch self {
             case .application: "APPL"
             case .appExtension: "XPC!"
+            case .watchApp: "APPL" // Watch apps are also applications
+            case .watchExtension: "XPC!"
             }
         }
     }

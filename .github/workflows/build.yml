@@ -43,3 +43,15 @@ jobs:
             -skipMacroValidation -skipPackagePluginValidation \
             -scheme XKit -destination generic/platform=iOS \
           | xcbeautify
+  build-watchos:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build
+        run: |
+          set -o pipefail \
+          && xcodebuild build \
+            -skipMacroValidation -skipPackagePluginValidation \
+            -scheme XKit -destination generic/platform=watchOS \
+          | xcbeautify

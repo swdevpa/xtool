@@ -24,6 +24,7 @@ let package = Package(
     platforms: [
         .iOS(.v15),
         .macOS(.v12),
+        .watchOS(.v8),
     ],
     products: [
         .library(
@@ -33,6 +34,10 @@ let package = Package(
         .library(
             name: "XToolSupport",
             targets: ["XToolSupport"]
+        ),
+        .library(
+            name: "XToolData",
+            targets: ["XToolData"]
         ),
         .executable(
             name: "xtool",
@@ -91,6 +96,15 @@ let package = Package(
             exclude: ["openapi-generator-config.yaml", "patch.js"]
         ),
         .target(
+            name: "XToolData",
+            dependencies: [
+                "XKit"
+            ],
+            swiftSettings: [
+                .define("XTOOL_SWIFTDATA", .when(platforms: [.iOS, .macOS, .watchOS]))
+            ]
+        ),
+        .target(
             name: "XKit",
             dependencies: [
                 "DeveloperAPI",
@@ -132,6 +146,12 @@ let package = Package(
             name: "XToolTests",
             dependencies: [
                 "XToolSupport",
+            ]
+        ),
+        .testTarget(
+            name: "XToolDataTests",
+            dependencies: [
+                "XToolData",
             ]
         ),
         .testTarget(
